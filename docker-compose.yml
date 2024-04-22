@@ -1,0 +1,125 @@
+version: '3.7'
+
+services:
+  # chat-server:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile
+  #   ports:
+  #     - "8080:8080"
+  #     - "8081:8081"
+
+  websocket-client:
+    image: nginx:alpine
+    volumes:
+      - ./web/index.html:/usr/share/nginx/html/index.html
+    ports:
+      - "80:80"
+  # Metrics
+  prometheus:
+    image: prom/prometheus
+    container_name: prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+    ports:
+      - 9090:9090
+    restart: unless-stopped
+    volumes:
+      - ./docker/prometheus:/etc/prometheus
+      - prom_data:/prometheus
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - 3000:3000
+    restart: unless-stopped
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=grafana
+    volumes:
+      - ./docker/grafana/provisioning:/etc/grafana/provisioning
+      - ./docker/grafana/dashboards:/var/lib/grafana/dashboards
+
+  # Tracing
+  clickhouse:
+    image: clickhouse/clickhouse-server:23.7
+    restart: on-failure
+    environment:
+      CLICKHOUSE_DB: uptrace
+    healthcheck:
+      test: ['CMD', 'wget', '--spider', '-q', 'localhost:8123/ping']
+      interval: 1s
+      timeout: 1s
+      retries: 30
+    volumes:
+      - ch_data1:/var/lib/clickhouse
+    ports:
+      - '8123:8123'
+      - '9000:9000'
+  redis:
+    image: redis
+    hostname: redis
+    ports:
+      - 6379:6379
+    volumes:
+      - redis_data:/data
+  postgres:
+    image: postgres:15-alpine
+    restart: on-failure
+    environment:
+      PGDATA: /var/lib/postgresql/data/pgdata
+      POSTGRES_USER: uptrace
+      POSTGRES_PASSWORD: uptrace
+      POSTGRES_DB: uptrace
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U uptrace -d uptrace']
+      interval: 1s
+      timeout: 1s
+      retries: 30
+    volumes:
+      - 'pg_data2:/var/lib/postgresql/data/pgdata'
+    ports:
+      - '5432:5432'
+
+  uptrace:
+    image: 'uptrace/uptrace:1.6.3'
+    restart: on-failure
+    volumes:
+      - ./docker/uptrace/uptrace.yml:/etc/uptrace/uptrace.yml
+    ports:
+      - '14317:14317'
+      - '14318:14318'
+
+  mysql:
+    image: mysql:latest
+    container_name: mysql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: pass
+      MYSQL_DATABASE: vendor1
+      MYSQL_USER: user
+      MYSQL_PASSWORD: pass
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./internal/data/db/init.sql:/docker-entrypoint-initdb.d/init.sql
+
+  otelcol:
+    image: otel/opentelemetry-collector-contrib:0.88.0
+    restart: on-failure
+    volumes:
+      - ./docker/otelcol/otelcol.yml:/etc/otelcol-contrib/config.yaml
+    ports:
+      - '4317:4317'
+      - '4318:4318'
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+
+volumes:
+  ch_data1:
+  pg_data2:
+  prom_data:
+  redis_data:
+  mysql_data:
