@@ -10,17 +10,21 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-func StoreSession(ctx context.Context, uid int, session *model.SessionDTO) error {
+func getKey(uid int64, ct model.ChannelType) string {
+	return strconv.FormatInt(uid, 10) + strconv.Itoa(int(ct))
+}
+
+func StoreSession(ctx context.Context, session *model.SessionDTO) error {
 	parsed, err := json.Marshal(session)
 	if err != nil {
 		return err
 	}
 
-	return GetRedisClient().Set(ctx, strconv.Itoa(uid), parsed, 0).Err()
+	return GetRedisClient().Set(ctx, getKey(session.UserID, session.ChannelType), parsed, 0).Err()
 }
 
-func GetSession(ctx context.Context, uid int64) (*model.SessionDTO, error) {
-	v, err := GetRedisClient().Get(ctx, strconv.FormatInt(uid, 10)).Result()
+func GetSession(ctx context.Context, uid int64, ct model.ChannelType) (*model.SessionDTO, error) {
+	v, err := GetRedisClient().Get(ctx, getKey(uid, ct)).Result()
 	if err == redis.Nil {
 		return nil, nil
 	}
@@ -35,6 +39,6 @@ func GetSession(ctx context.Context, uid int64) (*model.SessionDTO, error) {
 	return s, nil
 }
 
-func RemoveSession(ctx context.Context, uid int) error {
-	return GetRedisClient().Del(ctx, strconv.Itoa(uid)).Err()
+func RemoveSession(ctx context.Context, uid int64, ct model.ChannelType) error {
+	return GetRedisClient().Del(ctx, getKey(uid, ct)).Err()
 }

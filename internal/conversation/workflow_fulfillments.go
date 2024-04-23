@@ -18,14 +18,13 @@ func CheckWorkflowTriggered(ctx context.Context, session *model.SessionDTO, ques
 			ContextWindow:   5,
 			PromptVariables: map[string]string{"user_id": strconv.FormatInt(session.UserID, 10)}}
 	} else {
-
 		workflowCtx = model.WorkflowExecutionContext{Workflow: model.UNKNOWN}
 	}
 
 	return &workflowCtx
 }
 
-func CompleteReturn(ctx context.Context, s *model.SessionDTO, params map[string]string) string {
+func CompleteProductReturn(ctx context.Context, s *model.SessionDTO, params map[string]string) string {
 	utils.Log(ctx, fmt.Sprintf("Completing return: %+v", params))
 
 	// Conversation is complete
@@ -35,7 +34,7 @@ func CompleteReturn(ctx context.Context, s *model.SessionDTO, params map[string]
 	return "Great! I will get the return request started! What else can i do for you today?"
 }
 
-func SubmitReview(ctx context.Context, s *model.SessionDTO, params map[string]string) string {
+func SubmitProductReview(ctx context.Context, s *model.SessionDTO, params map[string]string) string {
 	utils.Log(ctx, fmt.Sprintf("Submitting review: %+v", params))
 
 	pvars := s.GetActiveConversation().WFExecutionContext.PromptVariables

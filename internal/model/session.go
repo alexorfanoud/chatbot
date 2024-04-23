@@ -16,6 +16,7 @@ type SessionDTO struct {
 	CreatedAt             time.Time
 	ActiveConversationIdx int
 	Conversations         []*ConversationDTO
+	ChannelType           ChannelType
 }
 
 func (s *SessionDTO) GetActiveConversation() *ConversationDTO {

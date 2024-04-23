@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"chat/internal/conversation/notification"
 	"chat/internal/data/dao"
 	"chat/internal/model"
 	"chat/internal/utils"
@@ -18,6 +19,8 @@ type ReviewRequest struct {
 
 func HandleReview(c *gin.Context) {
 	ctx := c.Request.Context()
+	ct := model.WEB
+	wf := model.REVIEW
 
 	var request ReviewRequest
 	if err := json.NewDecoder(c.Request.Body).Decode(&request); err != nil {
@@ -40,17 +43,20 @@ func HandleReview(c *gin.Context) {
 		return
 	}
 
-	resp, err := conversationManager.HandleRequest(ctx,
-		"", user.Id, true,
-		&model.WorkflowExecutionContext{
-			Workflow:      model.REVIEW,
-			ContextWindow: 0,
+	req := model.ConversationRequest{
+		Request:     "",
+		UserID:      user.Id,
+		ChannelType: ct,
+		WorkflowExecutionContext: &model.WorkflowExecutionContext{
+			Workflow:      wf,
+			ContextWindow: 0, // Sequential requests for the same item immediatelly trigger the openai function
 			PromptVariables: map[string]string{
 				"product":    fmt.Sprintf("{name: %s, description: %s}", product.Name, product.Description),
 				"product_id": product.ID,
 				"user":       user.Name,
-				"user_id":    fmt.Sprintf("%d", user.Id)},
-		})
+				"user_id":    fmt.Sprintf("%d", user.Id)}},
+		NewConversation: true}
+	resp, err := conversationManager.HandleRequest(ctx, req)
 
 	if err != nil {
 		utils.Log(ctx, fmt.Sprintf("Error triggering review process: %s", err.Error()))
@@ -59,7 +65,7 @@ func HandleReview(c *gin.Context) {
 	}
 
 	// Send response back to the user
-	err = notifier.Notify(ctx, user, resp)
+	err = notification.GetNotifier(ct).Notify(ctx, user.Id, resp)
 	if err != nil {
 		utils.Log(ctx, fmt.Sprintf("Error sending response notification: %s", err.Error()))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Unable to send response notification")})

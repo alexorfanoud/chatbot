@@ -33,8 +33,8 @@ func HandleWebsocketConnection(w http.ResponseWriter, r *http.Request) {
 	connCtx := context.Background()
 	userId := r.URL.Query().Get("user")
 	sessionStore.Save(userId, conn)
-	uidi, err := strconv.Atoi(userId)
-	distrib.RemoveSession(connCtx, uidi)
+	uidi, err := strconv.ParseInt(userId, 10, 64)
+	distrib.RemoveSession(connCtx, uidi, model.WEB)
 	utils.Log(connCtx, fmt.Sprintf("Received new session for user id: %s", userId))
 
 	defer func() {
@@ -52,7 +52,13 @@ func HandleWebsocketConnection(w http.ResponseWriter, r *http.Request) {
 		}
 
 		sessionIdi, _ := strconv.ParseInt(userId, 10, 64)
-		resp, err := conversationManager.HandleRequest(ctx, string(p), sessionIdi, false, &model.WorkflowExecutionContext{Workflow: model.UNKNOWN, ContextWindow: 5})
+		req := model.ConversationRequest{
+			Request:                  string(p),
+			UserID:                   sessionIdi,
+			ChannelType:              model.WEB,
+			WorkflowExecutionContext: &model.WorkflowExecutionContext{Workflow: model.UNKNOWN, ContextWindow: 5},
+			NewConversation:          false}
+		resp, err := conversationManager.HandleRequest(ctx, req)
 		if err != nil {
 			log.Println("Error handling request:", err)
 			break

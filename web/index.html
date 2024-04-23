@@ -81,7 +81,7 @@
     <script>
         const socket = new WebSocket("ws://localhost:8080/ws?user=2");
         var lastBotMessage = undefined;
-        var newResponse = false;
+        var newResponse = true;
 
         socket.onopen = function(event) {
             console.log("WebSocket connection established.");
@@ -110,7 +110,7 @@
             }
         }
 
-        function displayMessage(message, type) {
+        function createNewMessage(message, type) {
             const chatBox = document.getElementById("chat-box");
             const messageElement = document.createElement("div");
             messageElement.classList.add('message', type);
@@ -121,6 +121,27 @@
             chatBox.appendChild(messageElement);
             chatBox.scrollTop = chatBox.scrollHeight;
             lastBotMessage = content;
+        }
+
+        function displayMessage(message, type) {
+            if(message === "") {
+                return;
+            }
+            if (type === "sent") {
+                createNewMessage(message, type)
+                newResponse = true
+            } else if (type === "received" && newResponse) {
+                createNewMessage(message, type)
+                newResponse = false
+            } else {
+                if(message === "_") {
+                    newResponse = true
+                    return
+                } else {
+                    newResponse = false
+                }
+                lastBotMessage.textContent += message
+            }
         }
 
         document.getElementById("message-input").addEventListener("keypress", function(event) {
