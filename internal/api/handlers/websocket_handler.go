@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"chat/internal/api/middleware"
+	"chat/internal/conversation/notification"
 	"chat/internal/data/store/distrib"
 	"chat/internal/data/store/memory"
 	"chat/internal/model"
@@ -43,14 +44,17 @@ func HandleWebsocketConnection(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	for {
+		// For each incoming message
 		ctx := context.Background()
 		ctx, span := middleware.Tracer.Start(ctx, "handleMessage")
-		messageType, p, err := conn.ReadMessage()
+		defer span.End()
+		_, p, err := conn.ReadMessage()
 		if err != nil {
 			log.Println("Error reading message:", err)
 			break
 		}
 
+		// Send it to the LLM for conversation processing
 		sessionIdi, _ := strconv.ParseInt(userId, 10, 64)
 		req := model.ConversationRequest{
 			Request:                  string(p),
@@ -58,19 +62,17 @@ func HandleWebsocketConnection(w http.ResponseWriter, r *http.Request) {
 			ChannelType:              model.WEB,
 			WorkflowExecutionContext: &model.WorkflowExecutionContext{Workflow: model.UNKNOWN, ContextWindow: 5},
 			NewConversation:          false}
-		resp, err := conversationManager.HandleRequest(ctx, req)
+		resCh, err := conversationManager.HandleRequestStreaming(ctx, req)
 		if err != nil {
 			log.Println("Error handling request:", err)
 			break
 		}
 
-		// Echo message back to client
-		err = conn.WriteMessage(messageType, []byte(resp))
+		// Stream response to the web client
+		err = notification.GetNotifier(model.WEB).NotifyStream(ctx, sessionIdi, resCh)
 		if err != nil {
-			log.Println("Error sending message:", err)
+			utils.Log(ctx, fmt.Sprintf("Error during notification: %s", err.Error()))
 			break
 		}
-
-		span.End()
 	}
 }

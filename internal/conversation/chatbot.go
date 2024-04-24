@@ -18,40 +18,19 @@ import (
 )
 
 type Chatbot interface {
-	handleRequest(context.Context, *model.SessionDTO) (<-chan string, error)
-}
-
-type ChatbotImpl struct {
-}
-
-type StreamingChatbotImpl struct {
+	handleRequest(context.Context, *model.SessionDTO) (model.ChatbotResponse, error)
+	handleRequestStreaming(context.Context, *model.SessionDTO) (<-chan model.ChatbotResponse, error)
 }
 
 var (
-	once             sync.Once
-	openAIClient     *openai.Client
-	toolExecutionMap = map[string]func(context.Context, *model.SessionDTO, map[string]string) string{
-		"submit_review": func(ctx context.Context, s *model.SessionDTO, args map[string]string) string {
-			return SubmitProductReview(ctx, s, args)
-		},
-		"complete_return": func(ctx context.Context, s *model.SessionDTO, args map[string]string) string {
-			return CompleteProductReturn(ctx, s, args)
-		},
-	}
-	oneshotChatbot   = ChatbotImpl{}
-	streamingChatbot = StreamingChatbotImpl{}
+	once           sync.Once
+	openAIClient   *openai.Client
+	oneshotChatbot = ChatbotImpl{}
 )
 
 func getOpenAIClient() *openai.Client {
 	once.Do(func() { openAIClient = openai.NewClient(os.Getenv("OPENAI_TOKEN")) })
 	return openAIClient
-}
-
-func GetChatbot(streaming bool) Chatbot {
-	if streaming {
-		return &streamingChatbot
-	}
-	return &oneshotChatbot
 }
 
 func populatePromptVariables(prompt string, variables map[string]string) string {
@@ -61,7 +40,9 @@ func populatePromptVariables(prompt string, variables map[string]string) string 
 	return prompt
 }
 
-func (*ChatbotImpl) handleRequest(ctx context.Context, session *model.SessionDTO) (<-chan string, error) {
+type ChatbotImpl struct{}
+
+func (*ChatbotImpl) handleRequest(ctx context.Context, session *model.SessionDTO) (*model.ChatbotResponse, error) {
 	activeConv := session.GetActiveConversation()
 	workflowExecCtx := activeConv.WFExecutionContext
 	prompt, err := dao.GetPromptByWorkflow(ctx, int(workflowExecCtx.Workflow))
@@ -75,20 +56,22 @@ func (*ChatbotImpl) handleRequest(ctx context.Context, session *model.SessionDTO
 		return nil, err
 	}
 
-	resCh := make(chan string)
-	defer close(resCh)
+	chatbotRes := model.ChatbotResponse{
+		IsEOF:                true,
+		Content:              resp.Choices[0].Message.Content,
+		WorkflowFulfillments: make([]model.WorkflowFulfillment, 0),
+	}
+
 	for _, toolCall := range resp.Choices[0].Message.ToolCalls {
 		var args map[string]string
 		json.Unmarshal([]byte(toolCall.Function.Arguments), &args)
-		res := toolExecutionMap[toolCall.Function.Name](ctx, session, args)
-		resCh <- res
+		chatbotRes.WorkflowFulfillments = append(chatbotRes.WorkflowFulfillments, model.WorkflowFulfillment{Name: toolCall.Function.Name, Arguments: args})
 	}
 
-	resCh <- resp.Choices[0].Message.Content
-	return resCh, nil
+	return &chatbotRes, nil
 }
 
-func (*StreamingChatbotImpl) handleRequest(ctx context.Context, session *model.SessionDTO) (<-chan string, error) {
+func (*ChatbotImpl) handleRequestStreaming(ctx context.Context, session *model.SessionDTO) (<-chan *model.ChatbotResponse, error) {
 	activeConv := session.GetActiveConversation()
 	workflowExecCtx := activeConv.WFExecutionContext
 	prompt, err := dao.GetPromptByWorkflow(ctx, int(workflowExecCtx.Workflow))
@@ -102,11 +85,12 @@ func (*StreamingChatbotImpl) handleRequest(ctx context.Context, session *model.S
 		return nil, err
 	}
 
-	resCh := make(chan string)
+	resCh := make(chan *model.ChatbotResponse)
 	go func() {
 		defer close(resCh)
 
 		toolCalls := make([]openai.FunctionCall, 0)
+		totalResp := ""
 		for {
 			res, err := stream.Recv()
 			if errors.Is(err, io.EOF) {
@@ -117,19 +101,31 @@ func (*StreamingChatbotImpl) handleRequest(ctx context.Context, session *model.S
 				return
 			}
 			content := res.Choices[0].Delta.Content
-			resCh <- content
+			chatbotRes := model.ChatbotResponse{
+				IsEOF:                false,
+				Content:              content,
+				WorkflowFulfillments: make([]model.WorkflowFulfillment, 0),
+			}
+			totalResp += content
+			resCh <- &chatbotRes
 
 			// Gather delta tool calls
 			processStreamToolCalls(&toolCalls, res)
 		}
 
+		chatbotResFinal := model.ChatbotResponse{
+			IsEOF:                true,
+			Content:              totalResp,
+			WorkflowFulfillments: make([]model.WorkflowFulfillment, 0),
+		}
 		// If tool call was triggered, send over the response
 		var args map[string]string
-		for _, myToolCall := range toolCalls {
-			json.Unmarshal([]byte(myToolCall.Arguments), &args)
-			res := toolExecutionMap[myToolCall.Name](ctx, session, args)
-			resCh <- res
+		for _, toolCall := range toolCalls {
+			json.Unmarshal([]byte(toolCall.Arguments), &args)
+			chatbotResFinal.WorkflowFulfillments = append(chatbotResFinal.WorkflowFulfillments, model.WorkflowFulfillment{Name: toolCall.Name, Arguments: args})
 		}
+
+		resCh <- &chatbotResFinal
 	}()
 
 	return resCh, nil
@@ -185,7 +181,7 @@ func gptRequest(ctx context.Context, client *openai.Client, prompt *model.Prompt
 }
 
 func gptRequestStream(ctx context.Context, client *openai.Client, prompt *model.PromptDTO, workflowExecCtx *model.WorkflowExecutionContext, session *model.SessionDTO) (*openai.ChatCompletionStream, error) {
-	// utils.Log(ctx, fmt.Sprintf("ChatCompletion request: %+v\n", createRequest(prompt, session, workflowExecCtx, false)))
+	// utils.Log(ctx, fmt.Sprintf("ChatCompletion request: %+v\n", createOpenAIRequest(prompt, session, workflowExecCtx, false)))
 	ctx, span := middleware.Tracer.Start(ctx, "gptRequest")
 	defer span.End()
 	stream, err := client.CreateChatCompletionStream(ctx, createOpenAIRequest(prompt, session, workflowExecCtx, true))
@@ -194,6 +190,5 @@ func gptRequestStream(ctx context.Context, client *openai.Client, prompt *model.
 		return nil, err
 	}
 
-	// utils.Log(ctx, fmt.Sprintf("ChatCompletion response: %+v\n", resp))
 	return stream, nil
 }

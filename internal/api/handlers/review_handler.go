@@ -56,7 +56,7 @@ func HandleReview(c *gin.Context) {
 				"user":       user.Name,
 				"user_id":    fmt.Sprintf("%d", user.Id)}},
 		NewConversation: true}
-	resp, err := conversationManager.HandleRequest(ctx, req)
+	resCh, err := conversationManager.HandleRequestStreaming(ctx, req)
 
 	if err != nil {
 		utils.Log(ctx, fmt.Sprintf("Error triggering review process: %s", err.Error()))
@@ -65,7 +65,7 @@ func HandleReview(c *gin.Context) {
 	}
 
 	// Send response back to the user
-	err = notification.GetNotifier(ct).Notify(ctx, user.Id, resp)
+	err = notification.GetNotifier(ct).NotifyStream(ctx, user.Id, resCh)
 	if err != nil {
 		utils.Log(ctx, fmt.Sprintf("Error sending response notification: %s", err.Error()))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Unable to send response notification")})

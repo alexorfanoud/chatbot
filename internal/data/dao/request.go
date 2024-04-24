@@ -27,3 +27,13 @@ func UpdateRequest(ctx context.Context, request *model.Request) error {
 	}
 	return err
 }
+
+func UpdateRequestAnswer(ctx context.Context, rid int64, ans string) error {
+	const stmt = `UPDATE requests set answer=? WHERE id =?`
+	_, err := db.ExecContext(ctx, stmt, ans, rid)
+	if err != nil {
+		utils.Log(ctx, "Failed to update request in db")
+		return err
+	}
+	return err
+}

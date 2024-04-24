@@ -14,6 +14,7 @@ var (
 
 type Notifier interface {
 	Notify(context.Context, int64, string) error
+	NotifyStream(context.Context, int64, <-chan string) error
 }
 
 func GetNotifier(ct model.ChannelType) Notifier {

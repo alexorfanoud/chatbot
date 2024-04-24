@@ -10,6 +10,36 @@ import (
 	"strings"
 )
 
+var (
+	workflowFulfillmentMap = map[string]func(context.Context, *model.SessionDTO, map[string]string) string{
+		"submit_review": func(ctx context.Context, s *model.SessionDTO, args map[string]string) string {
+			return SubmitProductReview(ctx, s, args)
+		},
+		"complete_return": func(ctx context.Context, s *model.SessionDTO, args map[string]string) string {
+			return CompleteProductReturn(ctx, s, args)
+		},
+	}
+)
+
+func FulfillWorkflow(ctx context.Context, session *model.SessionDTO, wfFulfill model.WorkflowFulfillment) string {
+	if fulfillment := workflowFulfillmentMap[wfFulfill.Name]; fulfillment != nil {
+		return fulfillment(ctx, session, wfFulfill.Arguments)
+	}
+
+	return ""
+}
+
+func FulfillWorkflows(ctx context.Context, session *model.SessionDTO, workflowFulfillments []model.WorkflowFulfillment) string {
+	res := ""
+	for _, wfFulfill := range workflowFulfillments {
+		if fulfillment := workflowFulfillmentMap[wfFulfill.Name]; fulfillment != nil {
+			res += fulfillment(ctx, session, wfFulfill.Arguments)
+		}
+	}
+
+	return res
+}
+
 func CheckWorkflowTriggered(ctx context.Context, session *model.SessionDTO, question string) *model.WorkflowExecutionContext {
 	var workflowCtx model.WorkflowExecutionContext
 	// Should have some kind of keyword based classification model instead
@@ -48,5 +78,5 @@ func SubmitProductReview(ctx context.Context, s *model.SessionDTO, params map[st
 		panic(err)
 	}
 
-	return "Great! Thank you for the review. Let me know if there is anything else I can help with!"
+	return "Perfect, Thank you for the review! Let me know if there is anything else I can help with!"
 }

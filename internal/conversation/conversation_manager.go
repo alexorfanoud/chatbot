@@ -1,7 +1,6 @@
 package conversation
 
 import (
-	"chat/internal/conversation/notification"
 	"chat/internal/data/dao"
 	store "chat/internal/data/store/distrib"
 	"chat/internal/model"
@@ -13,25 +12,18 @@ import (
 var chatbot = ChatbotImpl{}
 
 type ConversationManager interface {
-	HandleRequest(context.Context, model.ConversationRequest) (string, error)
 	HandleRequestStreaming(context.Context, model.ConversationRequest) (<-chan string, error)
 }
 type ConversationManagerImpl struct{}
 
-func (cm *ConversationManagerImpl) HandleRequest(ctx context.Context, cr model.ConversationRequest) (string, error) {
+func (cm *ConversationManagerImpl) HandleRequestStreaming(ctx context.Context, cr model.ConversationRequest) (<-chan string, error) {
 	// get user session
 	session, err := dao.GetOrCreateUserSession(ctx, cr.UserID, cr.ChannelType)
 	if err != nil {
 		utils.Log(ctx, fmt.Sprintf("Unable to retrieve session for user id: %d\n, error: %s", cr.UserID, err.Error()))
-		return "", err
+		return nil, err
 	}
-	// store session / conversation context in cache when processing is done
-	defer func() {
-		err := store.StoreSession(ctx, session)
-		if err != nil {
-			utils.Log(ctx, fmt.Sprintf("Unable to store session for user: %d - %s", cr.UserID, err.Error()))
-		}
-	}()
+	utils.Log(ctx, fmt.Sprintf("Retrieved session: %+v", session))
 
 	// check if new workflow should be triggered based on the request
 	discoveredWorkflowCtx := CheckWorkflowTriggered(ctx, session, cr.Request)
@@ -46,7 +38,7 @@ func (cm *ConversationManagerImpl) HandleRequest(ctx context.Context, cr model.C
 		activeConv, err = dao.CreateActiveConversationForSession(ctx, session, cr.WorkflowExecutionContext)
 		if err != nil {
 			utils.Log(ctx, fmt.Sprintf("Unable to create new active conversation: %s", err.Error()))
-			return "", err
+			return nil, err
 		}
 	}
 	utils.Log(ctx, fmt.Sprintf("Retrieved active conversation: %+v", activeConv))
@@ -54,31 +46,39 @@ func (cm *ConversationManagerImpl) HandleRequest(ctx context.Context, cr model.C
 	// create and store the request model
 	convRequest := model.Request{ConversationID: activeConv.ID, Question: cr.Request}
 	activeConv.AddRequestToHistory(&convRequest)
-	defer dao.CreateRequest(ctx, &convRequest)
 
 	// 4. Chatbot request
-	if err != nil {
-		utils.Log(ctx, fmt.Sprintf("Unable to get chatbot response, error: %s", err.Error()))
-		return "", err
-	}
-
-	chatbotResCh, err := GetChatbot(session.ChannelType.SupportsStreaming()).handleRequest(ctx, session)
+	chatbotResCh, err := chatbot.handleRequestStreaming(ctx, session)
 	if err != nil {
 		utils.Log(ctx, fmt.Sprintf("Unable to get response from chatbot: %s", err.Error()))
 	}
 
-	totalResp := ""
-	for {
-		data, ok := <-chatbotResCh
-		if !ok {
-			break
+	resChan := make(chan string)
+	go func() {
+		defer close(resChan)
+		// store request / session context in cache when processing is done
+		defer dao.CreateRequest(ctx, &convRequest)
+		defer store.StoreSession(ctx, session)
+		for {
+			data, ok := <-chatbotResCh
+			if !ok {
+				break
+			}
+
+			if data.IsEOF {
+				ans := FulfillWorkflows(ctx, session, data.WorkflowFulfillments)
+				// Send the total answer content
+				convRequest.Answer = data.Content
+				resChan <- ans
+				// So that ui can render next chunk as a new msg
+				resChan <- "_"
+				break
+			}
+
+			// Send the delta contents
+			resChan <- data.Content
 		}
+	}()
 
-		totalResp += data
-		notification.GetNotifier(session.ChannelType).Notify(ctx, session.UserID, data)
-	}
-
-	// 5. Update request answer
-	convRequest.Answer = totalResp
-	return "_", err
+	return resChan, err
 }

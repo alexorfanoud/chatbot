@@ -94,4 +94,4 @@ INSERT INTO products (name, description, price) VALUES
 
 INSERT INTO users (name, email, phone) VALUES
 ("Chatbot", "", ""),
-("Alex Orfanoudakis", "alexorfanoud@gmail.com", "+306977157080");
+("Alex Orfanoudakis", "myemail@gmail.com", "+123123123");

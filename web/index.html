@@ -5,72 +5,76 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>WebSocket Chat</title>
     <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 0;
-            padding: 0;
-            background-color: #e9ebee; /* Light gray background */
-            color: #333; /* Dark text */
-        }
+body {
+    font-family: Arial, sans-serif;
+    margin: 0;
+    padding: 0;
+    background-color: #f0f2f5; /* Light gray background */
+    color: #333; /* Dark text */
+}
 
-        #chat-container {
-            max-width: 600px;
-            margin: 0 auto;
-            padding: 20px;
-        }
+#chat-container {
+    max-width: 800px; /* Increased max-width */
+    margin: 20px auto; /* Added margin */
+    padding: 20px;
+}
 
-        #chat-box {
-            width: 100%;
-            height: 300px;
-            border: 1px solid #ddd; /* Light gray border */
-            overflow-y: scroll;
-            padding: 10px;
-            background-color: #fff; /* White background */
-            border-radius: 5px;
-        }
+#chat-box {
+    width: 100%;
+    height: 400px; /* Increased height */
+    border: 1px solid #ddd; /* Light gray border */
+    overflow-y: auto; /* Changed to auto to enable auto-scroll */
+    padding: 10px;
+    background-color: #fff; /* White background */
+    border-radius: 10px; /* Increased border-radius */
+    scrollbar-width: none; /* Hide scrollbar for Firefox */
+    -ms-overflow-style: none; 
+}
+#chat-box::-webkit-scrollbar {
+    display: none; /* Hide scrollbar for WebKit browsers (Chrome, Safari) */
+}
 
-        .message {
-            margin-bottom: 10px;
-        }
+.message {
+    margin-bottom: 10px;
+}
 
-        .message.sent {
-            text-align: right;
-        }
+.message.sent {
+    text-align: right;
+}
 
-        .message.received {
-            text-align: left;
-        }
+.message.received {
+    text-align: left;
+}
 
-        .message.sent .content {
-            background-color: #ff8400; /* Messenger blue */
-            color: #fff; /* White text */
-            padding: 8px 12px;
-            border-radius: 5px;
-            display: inline-block;
-            max-width: 70%;
-        }
+.message .content {
+    padding: 10px; /* Increased padding */
+    border-radius: 10px; /* Increased border-radius */
+    display: inline-block;
+    max-width: 80%; /* Increased max-width */
+}
 
-        .message.received .content {
-            background-color: #f2f2f2; /* Light gray background */
-            padding: 8px 12px;
-            border-radius: 5px;
-            display: inline-block;
-            max-width: 70%;
-        }
+.message.sent .content {
+    background-color: #4caf50; /* Green background for sent messages */
+    color: #fff; /* White text */
+}
 
-        #message-input {
-            width: calc(100% - 20px);
-            padding: 8px 10px;
-            border: 1px solid #ddd; /* Light gray border */
-            border-radius: 5px;
-            margin-top: 10px;
-            background-color: #fff; /* White background */
-        }
+.message.received .content {
+    background-color: #e0e0e0; /* Light gray background for received messages */
+}
 
-        #message-input:focus {
-            outline: none;
-        }
-    </style>
+#message-input {
+    width: calc(100% - 20px);
+    padding: 10px; /* Increased padding */
+    border: 1px solid #ddd; /* Light gray border */
+    border-radius: 5px;
+    margin-top: 10px;
+    background-color: #fff; /* White background */
+}
+
+#message-input:focus {
+    outline: none;
+}
+</style>
 </head>
 <body>
     <div id="chat-container">

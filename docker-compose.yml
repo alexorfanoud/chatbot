@@ -12,7 +12,7 @@ services:
   websocket-client:
     image: nginx:alpine
     volumes:
-      - ./web/index.html:/usr/share/nginx/html/index.html
+      - ./web:/usr/share/nginx/html
     ports:
       - "80:80"
   # Metrics

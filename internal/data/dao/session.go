@@ -6,7 +6,33 @@ import (
 	"chat/internal/model"
 	"chat/internal/utils"
 	"context"
+	"fmt"
 )
+
+func GetRequestsForSession(ctx context.Context, uid int64) (map[int64][]model.Request, error) {
+	const stmt = `SELECT r.question, r.answer, r.created_at, c.id, c.workflow from sessions s, conversations c, requests r WHERE s.id = c.session_id and c.id = r.conversation_id and s.user_id = ? ORDER BY r.created_at ASC`
+	rows, err := db.QueryRowsContext(ctx, stmt, uid)
+	conversations := make(map[int64][]model.Request, 0)
+
+	// Iterate over the rows
+	for rows.Next() {
+		var request model.Request
+		var cid int64
+		var workflow int
+		if err := rows.Scan(&request.Question, &request.Answer, &request.CreatedAt, &cid, &workflow); err != nil {
+			utils.Log(ctx, fmt.Sprintf("Unable to scan row: %s", err.Error()))
+		}
+		// Append the parsed struct to the slice
+		conversations[cid] = append(conversations[cid], request)
+	}
+
+	if err != nil {
+		utils.Log(ctx, fmt.Sprintf("Unable to get session requests: %s", err.Error()))
+		return nil, err
+	}
+
+	return conversations, err
+}
 
 func CreateSession(ctx context.Context, session *model.SessionDTO) error {
 	const stmt = `INSERT INTO sessions(user_id, channel_type) values(?, ?)`

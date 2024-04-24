@@ -43,3 +43,12 @@ func QueryRowContext(ctx context.Context, stmt string, args ...any) *sql.Row {
 	defer span.End()
 	return dbInternal.QueryRowContext(ctx, stmt, args...)
 }
+
+func QueryRowsContext(ctx context.Context, stmt string, args ...any) (*sql.Rows, error) {
+	ctx, span := middleware.Tracer.Start(ctx, "dbRequest", trace.WithAttributes(
+		attribute.String("type", strings.Split(stmt, " ")[0]),
+		attribute.String("stmt", stmt),
+	))
+	defer span.End()
+	return dbInternal.QueryContext(ctx, stmt, args...)
+}

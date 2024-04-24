@@ -9,3 +9,8 @@ const (
 	RECOMMEND
 	ASK_ABOUT
 )
+
+type WorkflowFulfillment struct {
+	Name      string
+	Arguments map[string]string
+}
